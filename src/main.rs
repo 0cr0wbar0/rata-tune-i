@@ -2,27 +2,22 @@ use std::error::Error;
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
+use std::time::Duration;
 use rodio::*;
 use edar::*;
 use crossterm::event;
 use crossterm::event::*;
 use ratatui::*;
 
-fn main() -> io::Result<()> {
-    ratatui::run(|terminal: &mut DefaultTerminal| {
-        loop {
-            terminal.draw(|frame| frame.render_widget("Hello World!", frame.area()))?;
-            if event::read()?.is_key_press() {
-                break Ok(());
-            }
-        }
-    })
+fn main() -> Result<(), Box<dyn Error>> {
+    play_track("media/smokey_the_bear.mp3")?;
+    Ok(())
 }
 
-#[derive(Debug, Default)]
+
 pub struct App {
     exit: bool,
-
+    player: Player
 }
 
 impl App {
@@ -41,8 +36,6 @@ impl App {
 
     fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
-            // it's important to check that the event is a key press event as
-            // crossterm also emits key release and repeat events on Windows.
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                 self.handle_key_event(key_event)
             }
@@ -53,15 +46,43 @@ impl App {
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
-            KeyCode::Left => {}
-            KeyCode::Right => {}
-            KeyCode::Up => {}
-            KeyCode::Down => {}
-            KeyCode::Enter => {}
+            KeyCode::Left => self.next_track(),
+            KeyCode::Right => self.replay_track().unwrap(),
+            KeyCode::Up => self.volume_up(),
+            KeyCode::Down => self.volume_down(),
+            KeyCode::Enter => self.play_pause(),
             _ => {}
         }
     }
 
+    fn next_track(&mut self) {
+        self.player.skip_one();
+    }
+
+    fn replay_track(&mut self) -> Result<(), Box<dyn Error>> {
+        self.player.try_seek(Duration::from_secs(0))?;
+        Ok(())
+    }
+
+    fn volume_up(&mut self) {
+        if self.player.volume() < 1.0 {
+            self.player.set_volume(self.player.volume() + 0.1);
+        }
+    }
+
+    fn volume_down(&mut self) {
+        if self.player.volume() > 0.0 {
+            self.player.set_volume(self.player.volume() - 0.1);
+        }
+    }
+
+    fn play_pause(&mut self) {
+        if self.player.is_paused() {
+            self.player.play();
+        } else {
+            self.player.pause();
+        }
+    }
 
 
 }
