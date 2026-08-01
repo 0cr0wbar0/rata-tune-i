@@ -1,26 +1,43 @@
+use crossterm::event;
+use crossterm::event::*;
+use edar::*;
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
+use ratatui::prelude::Stylize;
+use ratatui::symbols::border;
+use ratatui::text::{Line, Text};
+use ratatui::widgets::{Block, Paragraph, Widget};
+use ratatui::*;
+use rodio::*;
 use std::error::Error;
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
 use std::time::Duration;
-use rodio::*;
-use edar::*;
-use crossterm::event;
-use crossterm::event::*;
-use ratatui::*;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    play_track("media/smokey_the_bear.mp3")?;
-    Ok(())
+fn main() -> io::Result<()> {
+    ratatui::run(|terminal| App::new().run(terminal))
 }
 
+pub enum AppState {
+    UNLOADED,
+    PLAYING,
+    PAUSED,
+}
 
 pub struct App {
     exit: bool,
-    player: Player
+    player: Player,
+    current_song_name: &'static str,
+    state: AppState,
 }
 
 impl App {
+
+    pub fn new() -> Self {
+        let (player, _) = Player::new();
+        Self { exit: false, player, current_song_name: "null", state: AppState::UNLOADED }
+    }
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         while !self.exit {
@@ -31,7 +48,7 @@ impl App {
     }
 
     fn draw(&self, frame: &mut Frame) {
-        todo!()
+        frame.render_widget(self, frame.area());
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -51,6 +68,7 @@ impl App {
             KeyCode::Up => self.volume_up(),
             KeyCode::Down => self.volume_down(),
             KeyCode::Enter => self.play_pause(),
+            KeyCode::Char('q') => self.exit = true,
             _ => {}
         }
     }
@@ -83,15 +101,95 @@ impl App {
             self.player.pause();
         }
     }
-
-
 }
+
+impl Widget for &App {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let title = Line::from(" Rata-tune-i ".bold());
+        match self.state {
+            AppState::UNLOADED => {
+                let instructions = Line::from(vec![
+                    " Replay ".into(),
+                    " <Left> ".red().bold(),
+                    " Play/Pause ".into(),
+                    " <Enter> ".red().bold(),
+                    " Next ".into(),
+                    " <Right> ".red().bold(),
+                    " Exit ".into(),
+                    " <q> ".red().bold(),
+                ]);
+                let block = Block::bordered()
+                    .title(title.centered())
+                    .title_bottom(instructions.centered())
+                    .border_set(border::THICK);
+                let player_text = Text::from(vec![Line::from(vec![
+                    "NO FILE LOADED".into()
+                ])]);
+
+                Paragraph::new(player_text)
+                    .centered()
+                    .block(block)
+                    .render(area, buf);
+            }
+            AppState::PAUSED => {
+                let instructions = Line::from(vec![
+                    " Replay ".into(),
+                    " <Left> ".green().bold(),
+                    " Play ".into(),
+                    " <Enter> ".green().bold(),
+                    " Next ".into(),
+                    " <Right> ".green().bold(),
+                    " Exit ".into(),
+                    " <q> ".green().bold(),
+                ]);
+                let block = Block::bordered()
+                    .title(title.centered())
+                    .title_bottom(instructions.centered())
+                    .border_set(border::THICK);
+                let player_text = Text::from(vec![Line::from(vec![
+                    "PAUSED: ".into(),
+                    self.current_song_name.into(),
+                ])]);
+
+                Paragraph::new(player_text)
+                    .centered()
+                    .block(block)
+                    .render(area, buf);
+            }
+            AppState::PLAYING => {
+                let instructions = Line::from(vec![
+                    " Replay ".into(),
+                    " <Left> ".green().bold(),
+                    " Pause ".into(),
+                    " <Enter> ".green().bold(),
+                    " Next ".into(),
+                    " <Right> ".green().bold(),
+                    " Exit ".into(),
+                    " <q> ".green().bold(),
+                ]);
+                let block = Block::bordered()
+                    .title(title.centered())
+                    .title_bottom(instructions.centered())
+                    .border_set(border::THICK);
+                let player_text = Text::from(vec![Line::from(vec![
+                    "Currently playing: ".into(),
+                    self.current_song_name.into(),
+                ])]);
+
+                Paragraph::new(player_text)
+                    .centered()
+                    .block(block)
+                    .render(area, buf);
+            }
+        }
+    }
+}
+
 
 fn play_track(music_file: &str) -> Result<Player, Box<dyn Error>> {
     // Get an output stream handle to the default physical sound device.
     // Note that the playback stops when the stream_handle is dropped.//!
-    let sink_handle = DeviceSinkBuilder::open_default_sink()
-        .expect("open default audio stream");
+    let sink_handle = DeviceSinkBuilder::open_default_sink().expect("open default audio stream");
     // Load a sound from a file, using a path relative to Cargo.toml
     let file = BufReader::new(File::open(&music_file)?);
     let duration = extract_duration(&music_file).unwrap();
